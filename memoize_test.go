@@ -1,10 +1,18 @@
-package memoize_test
+package memoize
 
 import (
+	"fmt"
+	"reflect"
 	"testing"
-
-	"github.com/BenLubar/memoize"
+	"time"
 )
+
+func AssertEqual(t *testing.T, a interface{}, b interface{}) {
+	if a == b {
+		return
+	}
+	t.Errorf("Received %v (type %v), expected %v (type %v)", a, reflect.TypeOf(a), b, reflect.TypeOf(b))
+}
 
 func TestPanic(t *testing.T) {
 	count := 0
@@ -14,7 +22,7 @@ func TestPanic(t *testing.T) {
 			panic(count)
 		}
 	}
-	f = memoize.Memoize(f).(func(int))
+	f = Memoize(f).(func(int))
 
 	expect := func(p interface{}, i int) {
 		defer func() {
@@ -45,7 +53,7 @@ func TestVariadic(t *testing.T) {
 		}
 		return concat(s0+s1[0], s1[1:]...)
 	}
-	concat = memoize.Memoize(concat).(func(string, ...string) string)
+	concat = Memoize(concat).(func(string, ...string) string)
 
 	expect := func(actual, expected string, n int) {
 		if actual != expected || n != count {
@@ -61,4 +69,32 @@ func TestVariadic(t *testing.T) {
 	expect(concat("string", "one"), "stringone", 5)
 	expect(concat("stringone", "two"), "stringonetwo", 7)
 	expect(concat("string", "one", "two"), "stringonetwo", 8)
+}
+
+func TestMixed(t *testing.T) {
+	var foo func(int, string, float64) (int, string)
+	foo = func(i int, s0 string, f0 float64) (int, string) {
+		fmt.Println("running", s0)
+		time.Sleep(time.Second * time.Duration(f0))
+		out := fmt.Sprintf("%d %s %.1f", i, s0, f0)
+		return i + 1, out
+	}
+	foo = Memoize(foo).(func(int, string, float64) (int, string))
+
+	i, s := foo(0, "delay", 3.2)
+	AssertEqual(t, i, 1)
+	AssertEqual(t, s, "0 delay 3.2")
+
+	i, s = foo(1, "nodelay", 0)
+	AssertEqual(t, i, 2)
+	AssertEqual(t, s, "1 nodelay 0.0")
+
+	i, s = foo(0, "delay", 3.2)
+	AssertEqual(t, i, 1)
+	AssertEqual(t, s, "0 delay 3.2")
+
+	i, s = foo(1, "nodelay", 0)
+	AssertEqual(t, i, 2)
+	AssertEqual(t, s, "1 nodelay 0.0")
+
 }
